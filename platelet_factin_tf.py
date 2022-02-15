@@ -1,6 +1,7 @@
 import os
 import cv2
 import tensorflow as tf
+import numpy as np
 from tensorflow.keras.utils import to_categorical #, plot_model
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Dense, BatchNormalization, Dropout, GlobalAveragePooling2D
@@ -12,7 +13,6 @@ from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.applications import InceptionV3
 from tensorflow import math as tfmath
 from sklearn.model_selection import train_test_split
-import numpy as np
 # from pandas import read_csv
 # import csv
 
