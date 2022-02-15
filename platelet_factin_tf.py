@@ -2,7 +2,7 @@ import os
 import cv2
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.utils import to_categorical #, plot_model
+from tensorflow.keras.utils import to_categorical  # , plot_model
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Dense, BatchNormalization, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.models import Sequential, Model, load_model
@@ -15,6 +15,7 @@ from tensorflow import math as tfmath
 from sklearn.model_selection import train_test_split
 # from pandas import read_csv
 # import csv
+
 
 def main():
     global min_loss
@@ -29,9 +30,9 @@ def main():
     SIZE_ROWS = 299
     SIZE_COLS = 299
 
-    epochs = 10 # total epochs to run up to
-    batch_size = 32 # number of images per batch
-    subset = 30 # float('inf')
+    epochs = 10  # total epochs to run up to
+    batch_size = 32  # number of images per batch
+    subset = 30  # float('inf')
 
     initial_learning_rate = 0.001
     final_learning_rate = 0.000001
@@ -41,25 +42,29 @@ def main():
     custom_model = False
 
     #####################
-    batch_size = min(subset,batch_size)
-    decay_rate = tfmath.log(final_learning_rate/initial_learning_rate)/(epochs-1)
+    batch_size = min(subset, batch_size)
+    decay_rate = tfmath.log(final_learning_rate /
+                            initial_learning_rate)/(epochs-1)
 
     def load_data(import_dir, subset=float('inf')):
         data_labels = os.listdir(import_dir)
 
         num_samples = []
-        for j,label in enumerate(data_labels):
-            num_samples.append(min(subset,len([1 for x in list(os.scandir(os.path.join(import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"])))
+        for j, label in enumerate(data_labels):
+            num_samples.append(min(subset, len([1 for x in list(os.scandir(os.path.join(
+                import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"])))
         tot_samples = sum(num_samples)
 
-        X_data = np.ndarray((tot_samples, SIZE_ROWS, SIZE_COLS, 3), dtype=np.uint8)
+        X_data = np.ndarray(
+            (tot_samples, SIZE_ROWS, SIZE_COLS, 3), dtype=np.uint8)
         Y_data = np.ndarray((tot_samples,), dtype=np.uint8)
 
-        for j,label in enumerate(data_labels):
+        for j, label in enumerate(data_labels):
             pct = 0
-            image_names = [x for x in list(os.scandir(os.path.join(import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]
+            image_names = [x for x in list(os.scandir(os.path.join(
+                import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]
             print(f'Loading {label}.', end='')
-            for i,image_name in enumerate(image_names):
+            for i, image_name in enumerate(image_names):
                 pct += 1/num_samples[j]
                 if pct > 0.1:
                     pct -= 0.1
@@ -67,27 +72,29 @@ def main():
                 if i >= subset:
                     break
                 # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
-                img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
+                img = cv2.imread(os.path.join(
+                    import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
 
                 # image corrections (contrast 5-95 percentile)
-                hist = cv2.calcHist([img],[0],None,[256],[0,256])
+                hist = cv2.calcHist([img], [0], None, [256], [0, 256])
                 cumhist = np.cumsum(hist)
-                
-                tol = 5 # % of pixels to saturate (i.e. keep 5-95%)
+
+                tol = 5  # % of pixels to saturate (i.e. keep 5-95%)
                 total = img.size
-                low_bound = total * tol / 100 # low number of pixels to remove
-                upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
+                low_bound = total * tol / 100  # low number of pixels to remove
+                # upp number of pixels to remove
+                upp_bound = total * (100-tol) / 100
 
                 lowb = None
                 uppb = None
-                for k,h in enumerate(cumhist):
+                for k, h in enumerate(cumhist):
                     if h > low_bound and not lowb:
                         lowb = k
                     if h > upp_bound and not uppb:
                         uppb = k-1
 
-                img = np.clip(img,lowb,uppb)
-                cv2.normalize(img,img,0,255,cv2.NORM_MINMAX)
+                img = np.clip(img, lowb, uppb)
+                cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
 
                 img = cv2.resize(img, (SIZE_ROWS, SIZE_COLS))
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -101,12 +108,12 @@ def main():
         Y_data = to_categorical(Y_data, len(num_samples))
 
         data_weights = {}
-        for j,label in enumerate(data_labels):
+        for j, label in enumerate(data_labels):
             data_weights[j] = (1 / num_samples[j])*(tot_samples / 2.0)
 
         return X_data, Y_data, data_labels, data_weights
 
-    def augment_data(X_train,Y_train,X_val,Y_val):
+    def augment_data(X_train, Y_train, X_val, Y_val):
         # def right_angle_rotate(input_image):
         #     angle = np.random.choice([0, 90, 180, 270])
         #     if angle != 0:
@@ -133,71 +140,79 @@ def main():
         #     vertical_flip=True, # mirror up/down
         #     # brightness_range=[0.8,1.0], # modifies brightness
         #     fill_mode='nearest')
-        
-        train_datagen = ImageDataGenerator(
-            fill_mode = 'nearest',
-            rescale = 1./255, # i.e. get all pixels betwen 0-1, works for 8-bit image uint8 = 255
-            rotation_range = 45, # degrees to rotate image (from -45 to +45 degrees)
-            horizontal_flip = True, # mirror left/right
-            vertical_flip = True # mirror up/down
-            )
 
-        val_datagen = ImageDataGenerator(rescale = 1./255) # don't modify validation images
+        train_datagen = ImageDataGenerator(
+            fill_mode='nearest',
+            rescale=1./255,  # i.e. get all pixels betwen 0-1, works for 8-bit image uint8 = 255
+            # degrees to rotate image (from -45 to +45 degrees)
+            rotation_range=45,
+            horizontal_flip=True,  # mirror left/right
+            vertical_flip=True  # mirror up/down
+        )
+
+        # don't modify validation images
+        val_datagen = ImageDataGenerator(rescale=1./255)
 
         train_datagen.fit(X_train, augment=True)
 
         val_datagen.fit(X_val, augment=True)
 
         train_generator = train_datagen.flow(
-            X_train,Y_train,
-            batch_size = batch_size)
-        
+            X_train, Y_train,
+            batch_size=batch_size)
+
         val_generator = val_datagen.flow(
-            X_val,Y_val,
-            batch_size = batch_size,
-            shuffle = False)
-        
+            X_val, Y_val,
+            batch_size=batch_size,
+            shuffle=False)
+
         return train_generator, val_generator
 
     def define_model(custom_model=False):
         if custom_model:
             model = Sequential()
-            model.add(BatchNormalization(input_shape=(SIZE_ROWS, SIZE_COLS, 1)))
-            model.add(Convolution2D(64, (5, 5), padding='same', activation='relu'))
-            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2,2)))
+            model.add(BatchNormalization(
+                input_shape=(SIZE_ROWS, SIZE_COLS, 1)))
+            model.add(Convolution2D(
+                64, (5, 5), padding='same', activation='relu'))
+            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
             model.add(Dropout(0.25))
 
             model.add(BatchNormalization())
-            model.add(Convolution2D(128, (5, 5), padding='same', activation='relu'))
+            model.add(Convolution2D(
+                128, (5, 5), padding='same', activation='relu'))
             model.add(MaxPooling2D(pool_size=(2, 2)))
             model.add(Dropout(0.25))
 
             model.add(BatchNormalization())
-            model.add(Convolution2D(256, (5, 5), padding='same', activation='relu'))
-            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2,2)))
+            model.add(Convolution2D(
+                256, (5, 5), padding='same', activation='relu'))
+            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
             model.add(Dropout(0.25))
 
             model.add(GlobalAveragePooling2D())
             model.add(Dense(256, activation='relu'))
             # model.add(Activation('relu'))
             model.add(Dropout(0.5))
-            model.add(Dense(len(labels),activation='softmax'))
+            model.add(Dense(len(labels), activation='softmax'))
             # model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
             # lr_schedule = ExponentialDecay(learning_rate, decay_steps, decay_rate)
         else:
-            #InceptionV3
-            base_model = InceptionV3(weights='imagenet', include_top=False, input_shape=(SIZE_ROWS,SIZE_COLS,3))
+            # InceptionV3
+            base_model = InceptionV3(
+                weights='imagenet', include_top=False, input_shape=(SIZE_ROWS, SIZE_COLS, 3))
             # base_model = Model(inputs=base_model.input, outputs=base_model.get_layer('conv5_block3_3_bn').output)
 
             for layer in base_model.layers:
                 layer.trainable = False
-            
+
             x = base_model.output
             x = GlobalAveragePooling2D()(x)
             x = Dense(2048, activation='relu')(x)
             x = Dropout(0.5)(x)
 
-            predictions = Dense(len(labels), activation='softmax', name='predictions')(x)
+            predictions = Dense(
+                len(labels), activation='softmax', name='predictions')(x)
 
             model = Model(inputs=base_model.input, outputs=predictions)
 
@@ -211,21 +226,25 @@ def main():
 
         # model.compile(optimizer=SGD(learning_rate=lr_schedule), loss='categorical_crossentropy', metrics=['accuracy'])
 
-        model.compile(optimizer=SGD(learning_rate=initial_learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
+        model.compile(optimizer=SGD(learning_rate=initial_learning_rate),
+                      loss='categorical_crossentropy', metrics=['accuracy'])
 
         return model
 
     X_train, Y_train, labels, class_weight = load_data(path_train_data, subset)
 
-    X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size = 0.20, random_state = None, stratify = Y_train)
+    X_train, X_val, Y_train, Y_val = train_test_split(
+        X_train, Y_train, test_size=0.20, random_state=None, stratify=Y_train)
 
-    train_generator, val_generator = augment_data(X_train, Y_train, X_val, Y_val)
+    train_generator, val_generator = augment_data(
+        X_train, Y_train, X_val, Y_val)
 
     if load_checkpoint and os.path.exists(os.path.join(path_checkpoint, 'checkpoint.h5')):
         print("Loading from existing checkpoint...")
         model = load_model(os.path.join(path_checkpoint, 'checkpoint.h5'))
 
-        last_save = np.load(os.path.join(path_checkpoint, 'last_save.npy'), allow_pickle = True)
+        last_save = np.load(os.path.join(
+            path_checkpoint, 'last_save.npy'), allow_pickle=True)
         last_save = last_save.item()
 
         initial_epoch = last_save['epoch'] + 1
@@ -237,8 +256,8 @@ def main():
         #     final_line = f.readlines()[-1]
         # initial_epoch = int(final_line.split(",")[0]) + 1
         csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
-            separator = ',',
-            append = True)
+                                 separator=',',
+                                 append=True)
     else:
         if not os.path.exists(path_checkpoint):
             os.mkdir(path_checkpoint)
@@ -249,8 +268,8 @@ def main():
         model.summary()
 
         csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
-            separator = ',',
-            append = False)
+                                 separator=',',
+                                 append=False)
         # plot_model(model, to_file='test.png', show_shapes=True, show_layer_names=False)
 
     # if not os.path.exists(path_checkpoint):
@@ -278,7 +297,7 @@ def main():
     def lr_exp_decay(epoch, lr):
         return initial_learning_rate * tfmath.exp(decay_rate*epoch)
 
-    reduce_lr = LearningRateScheduler(lr_exp_decay, verbose = 1)
+    reduce_lr = LearningRateScheduler(lr_exp_decay, verbose=1)
 
     class CustomCallback(Callback):
         def on_epoch_end(self, epoch, logs=None):
@@ -295,28 +314,31 @@ def main():
             if logs['val_loss'] < min_loss:
                 # print(f"loss = {logs['val_loss']}, saving model")
                 model.save(os.path.join(path_checkpoint, 'checkpoint.h5'))
-                outputs = {'epoch':epoch, 'lr':current_lr, 'val_loss':logs['val_loss']}
+                outputs = {'epoch': epoch, 'lr': current_lr,
+                           'val_loss': logs['val_loss']}
                 np.save(os.path.join(path_checkpoint, 'last_save.npy'), outputs)
                 min_loss = logs['val_loss']
 
     history = model.fit(
         train_generator,
-        steps_per_epoch = max(1, train_generator.n // batch_size),
-        epochs = epochs,
-        initial_epoch = initial_epoch,
-        validation_data = val_generator,
-        validation_steps = max(1, val_generator.n // batch_size),
-        callbacks = [csv_callback, reduce_lr, CustomCallback()],
-        class_weight = class_weight,
-        verbose = 1
+        steps_per_epoch=max(1, train_generator.n // batch_size),
+        epochs=epochs,
+        initial_epoch=initial_epoch,
+        validation_data=val_generator,
+        validation_steps=max(1, val_generator.n // batch_size),
+        callbacks=[csv_callback, reduce_lr, CustomCallback()],
+        class_weight=class_weight,
+        verbose=1
     )
 
-    predictions = model.predict(val_generator) # , steps=val_generator.n // batch_size + 1
+    # , steps=val_generator.n // batch_size + 1
+    predictions = model.predict(val_generator)
     predicted_classes = np.argmax(predictions, axis=1)
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
-    confusion = tfmath.confusion_matrix(actual_classes,predicted_classes)
-    np.save(os.path.join(path_checkpoint, 'val_metrics.npy'), {'labels':labels, 'confusion_matrix':confusion.numpy()})
+    confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
+    np.save(os.path.join(path_checkpoint, 'val_metrics.npy'), {
+            'labels': labels, 'confusion_matrix': confusion.numpy()})
     print(labels)
     print(confusion.numpy())
 
@@ -325,6 +347,7 @@ def main():
 
     # save the model
     # model.save('platelet_factin_cnn.h5')
+
 
 if __name__ == "__main__":
     main()
