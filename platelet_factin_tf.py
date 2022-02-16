@@ -30,12 +30,12 @@ def main():
     SIZE_ROWS = 299
     SIZE_COLS = 299
 
-    epochs = 10  # total epochs to run up to
+    epochs = 500  # total epochs to run up to
     batch_size = 32  # number of images per batch
-    subset = 30  # float('inf')
+    subset = float('inf')  # float('inf')
 
     initial_learning_rate = 0.001
-    final_learning_rate = 0.000001
+    final_learning_rate = 0.00000001
 
     load_checkpoint = True
 
@@ -168,53 +168,34 @@ def main():
 
         return train_generator, val_generator
 
-    def define_model(custom_model=False):
-        if custom_model:
-            model = Sequential()
-            model.add(BatchNormalization(
-                input_shape=(SIZE_ROWS, SIZE_COLS, 1)))
-            model.add(Convolution2D(
-                64, (5, 5), padding='same', activation='relu'))
-            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-            model.add(Dropout(0.25))
+    def define_custom_model():
+        model = Sequential()
+        model.add(BatchNormalization(
+            input_shape=(SIZE_ROWS, SIZE_COLS, 1)))
+        model.add(Convolution2D(
+            64, (5, 5), padding='same', activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        model.add(Dropout(0.25))
 
-            model.add(BatchNormalization())
-            model.add(Convolution2D(
-                128, (5, 5), padding='same', activation='relu'))
-            model.add(MaxPooling2D(pool_size=(2, 2)))
-            model.add(Dropout(0.25))
+        model.add(BatchNormalization())
+        model.add(Convolution2D(
+            128, (5, 5), padding='same', activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Dropout(0.25))
 
-            model.add(BatchNormalization())
-            model.add(Convolution2D(
-                256, (5, 5), padding='same', activation='relu'))
-            model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-            model.add(Dropout(0.25))
+        model.add(BatchNormalization())
+        model.add(Convolution2D(
+            256, (5, 5), padding='same', activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+        model.add(Dropout(0.25))
 
-            model.add(GlobalAveragePooling2D())
-            model.add(Dense(256, activation='relu'))
-            # model.add(Activation('relu'))
-            model.add(Dropout(0.5))
-            model.add(Dense(len(labels), activation='softmax'))
-            # model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-            # lr_schedule = ExponentialDecay(learning_rate, decay_steps, decay_rate)
-        else:
-            # InceptionV3
-            base_model = InceptionV3(
-                weights='imagenet', include_top=False, input_shape=(SIZE_ROWS, SIZE_COLS, 3))
-            # base_model = Model(inputs=base_model.input, outputs=base_model.get_layer('conv5_block3_3_bn').output)
-
-            for layer in base_model.layers:
-                layer.trainable = False
-
-            x = base_model.output
-            x = GlobalAveragePooling2D()(x)
-            x = Dense(2048, activation='relu')(x)
-            x = Dropout(0.5)(x)
-
-            predictions = Dense(
-                len(labels), activation='softmax', name='predictions')(x)
-
-            model = Model(inputs=base_model.input, outputs=predictions)
+        model.add(GlobalAveragePooling2D())
+        model.add(Dense(256, activation='relu'))
+        # model.add(Activation('relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(len(labels), activation='softmax'))
+        # model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        # lr_schedule = ExponentialDecay(learning_rate, decay_steps, decay_rate)
 
         # learning_rate_decay_factor = (final_learning_rate / initial_learning_rate)**(1/epochs)
         # steps_per_epoch = int(train_generator.n/batch_size)
@@ -226,8 +207,40 @@ def main():
 
         # model.compile(optimizer=SGD(learning_rate=lr_schedule), loss='categorical_crossentropy', metrics=['accuracy'])
 
-        model.compile(optimizer=SGD(learning_rate=initial_learning_rate),
-                      loss='categorical_crossentropy', metrics=['accuracy'])
+        model.compile(optimizer=SGD(), loss='categorical_crossentropy', metrics=['accuracy'])
+
+        return model
+
+    def define_pretrained_model():
+        # InceptionV3
+        base_model = InceptionV3(
+            weights='imagenet', include_top=False, input_shape=(SIZE_ROWS, SIZE_COLS, 3))
+        # base_model = Model(inputs=base_model.input, outputs=base_model.get_layer('conv5_block3_3_bn').output)
+
+        for layer in base_model.layers:
+            layer.trainable = False
+
+        x = base_model.output
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(2048, activation='relu')(x)
+        x = Dropout(0.5)(x)
+
+        predictions = Dense(
+            len(labels), activation='softmax', name='predictions')(x)
+
+        model = Model(inputs=base_model.input, outputs=predictions)
+
+        # learning_rate_decay_factor = (final_learning_rate / initial_learning_rate)**(1/epochs)
+        # steps_per_epoch = int(train_generator.n/batch_size)
+        # lr_schedule = ExponentialDecay(
+        #                 initial_learning_rate=initial_learning_rate,
+        #                 decay_steps=steps_per_epoch,
+        #                 decay_rate=learning_rate_decay_factor,
+        #                 staircase=True)
+
+        # model.compile(optimizer=SGD(learning_rate=lr_schedule), loss='categorical_crossentropy', metrics=['accuracy'])
+
+        model.compile(optimizer=SGD(), loss='categorical_crossentropy', metrics=['accuracy'])
 
         return model
 
@@ -247,21 +260,17 @@ def main():
             path_checkpoint, 'last_save.npy'), allow_pickle=True)
         last_save = last_save.item()
 
-        initial_epoch = last_save['epoch'] + 1
+        initial_epoch = last_save['epoch']
         # initial_learning_rate = last_save['lr']
         min_loss = last_save['val_loss']
 
-        # # get last completed epoch:
-        # with open(os.path.join(path_checkpoint, "history.csv"), 'r') as f:
-        #     final_line = f.readlines()[-1]
-        # initial_epoch = int(final_line.split(",")[0]) + 1
         csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
                                  separator=',',
                                  append=True)
     else:
         if not os.path.exists(path_checkpoint):
             os.mkdir(path_checkpoint)
-        model = define_model(custom_model)
+        model = define_pretrained_model()
         initial_epoch = 0
         min_loss = float('inf')
 
@@ -294,27 +303,26 @@ def main():
     #     min_lr = final_learning_rate,
     #     verbose = 2)
 
-    def lr_exp_decay(epoch, lr):
-        return initial_learning_rate * tfmath.exp(decay_rate*epoch)
+    # def lr_exp_decay(epoch, lr):
+    #     return initial_learning_rate * tfmath.exp(decay_rate*epoch)
 
-    reduce_lr = LearningRateScheduler(lr_exp_decay, verbose=1)
+    # reduce_lr = LearningRateScheduler(lr_exp_decay, verbose=1)
 
     class CustomCallback(Callback):
+        def on_epoch_begin(self, epoch, logs=None):
+            new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
+            tf.keras.backend.set_value(model.optimizer.lr, new_lr)
+
         def on_epoch_end(self, epoch, logs=None):
             global min_loss
-            # current_lr = self.optimizer._decayed_lr('float32').numpy()
-            # if isinstance(model.optimizer.lr, tf.keras.optimizers.schedules.LearningRateSchedule):
-            #     current_lr = model.optimizer.lr(model.optimizer.iterations).numpy()
-            # else:
-            #     current_lr = model.optimizer.lr
 
             current_lr = model.optimizer.lr.numpy()
-            # print(f"epoch = {epoch}, learning rate = {current_lr}")
+            print(f"epoch = {epoch + 1}, learning rate = {current_lr}")
 
             if logs['val_loss'] < min_loss:
-                # print(f"loss = {logs['val_loss']}, saving model")
+                print(f"loss = {logs['val_loss']}, saving model")
                 model.save(os.path.join(path_checkpoint, 'checkpoint.h5'))
-                outputs = {'epoch': epoch, 'lr': current_lr,
+                outputs = {'epoch': epoch + 1, 'lr': current_lr,
                            'val_loss': logs['val_loss']}
                 np.save(os.path.join(path_checkpoint, 'last_save.npy'), outputs)
                 min_loss = logs['val_loss']
@@ -326,12 +334,11 @@ def main():
         initial_epoch=initial_epoch,
         validation_data=val_generator,
         validation_steps=max(1, val_generator.n // batch_size),
-        callbacks=[csv_callback, reduce_lr, CustomCallback()],
+        callbacks=[csv_callback, CustomCallback()],
         class_weight=class_weight,
         verbose=1
     )
 
-    # , steps=val_generator.n // batch_size + 1
     predictions = model.predict(val_generator)
     predicted_classes = np.argmax(predictions, axis=1)
     actuals = val_generator.y
@@ -341,13 +348,6 @@ def main():
             'labels': labels, 'confusion_matrix': confusion.numpy()})
     print(labels)
     print(confusion.numpy())
-
-    # save the training history (accuracy, loss, etc)
-    # np.save('history1.npy',history.history)
-
-    # save the model
-    # model.save('platelet_factin_cnn.h5')
-
 
 if __name__ == "__main__":
     main()
