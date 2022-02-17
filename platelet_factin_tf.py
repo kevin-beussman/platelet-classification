@@ -20,26 +20,23 @@ from sklearn.model_selection import train_test_split
 def main():
     global min_loss
 
-    np.random.seed(813)
-
-    path_train_data = "C:/Users/kevin/test_factin_platelets/FactinMorphology_analysis_20211216_20220120_20220204_184250/Training_Data/"
-    path_checkpoint = "C:/Users/kevin/test_factin_platelets/checkpoints/"
+    path_train_data = "C:/Users/kevin/git-workspace/tf-platelets/FactinMorphology_analysis_20211216_20220120_20220204_184250/Training_Data/"
+    path_checkpoint = "C:/Users/kevin/git-workspace/tf-platelets/output/"
     # path_train_data = "/mmfs1/home/beussk/platelet_factin_tf/train_data_20211216_20220120_20220204_184250/"
-    # path_checkpoint = "/mmfs1/home/beussk/platelet_factin_tf/checkpoints/"
+    # path_checkpoint = "/mmfs1/home/beussk/platelet_factin_tf/output/"
 
-    SIZE_ROWS = 299
-    SIZE_COLS = 299
+    SIZE_ROWS = 96 # 299 for inceptionv3
+    SIZE_COLS = 96
+    SIZE_CHAN = 1 # use 1 for custom model, 3 for pretrained model
 
-    epochs = 500  # total epochs to run up to
+    epochs = 50  # total epochs to run up to
     batch_size = 32  # number of images per batch
-    subset = float('inf')  # float('inf')
+    subset = 50 # float('inf')
 
     initial_learning_rate = 0.001
     final_learning_rate = 0.00000001
 
     load_checkpoint = True
-
-    custom_model = False
 
     #####################
     batch_size = min(subset, batch_size)
@@ -56,7 +53,7 @@ def main():
         tot_samples = sum(num_samples)
 
         X_data = np.ndarray(
-            (tot_samples, SIZE_ROWS, SIZE_COLS, 3), dtype=np.uint8)
+            (tot_samples, SIZE_ROWS, SIZE_COLS, SIZE_CHAN), dtype=np.uint8)
         Y_data = np.ndarray((tot_samples,), dtype=np.uint8)
 
         for j, label in enumerate(data_labels):
@@ -97,9 +94,11 @@ def main():
                 cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
 
                 img = cv2.resize(img, (SIZE_ROWS, SIZE_COLS))
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                if SIZE_CHAN == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                elif SIZE_CHAN == 1:
+                    img = img.reshape(SIZE_ROWS, SIZE_COLS, 1)
 
-                # img = img.reshape(SIZE_ROWS, SIZE_COLS, 1)
                 idx = i + sum(num_samples[:j])
                 # X_data[idx] = np.array([img])
                 X_data[idx] = np.array(img)
@@ -170,22 +169,18 @@ def main():
 
     def define_custom_model():
         model = Sequential()
-        model.add(BatchNormalization(
-            input_shape=(SIZE_ROWS, SIZE_COLS, 1)))
-        model.add(Convolution2D(
-            64, (5, 5), padding='same', activation='relu'))
+        model.add(BatchNormalization(input_shape=(SIZE_ROWS, SIZE_COLS, SIZE_CHAN)))
+        model.add(Convolution2D(64, (5, 5), padding='same', activation='relu'))
         model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
         model.add(Dropout(0.25))
 
         model.add(BatchNormalization())
-        model.add(Convolution2D(
-            128, (5, 5), padding='same', activation='relu'))
+        model.add(Convolution2D(128, (5, 5), padding='same', activation='relu'))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Dropout(0.25))
 
         model.add(BatchNormalization())
-        model.add(Convolution2D(
-            256, (5, 5), padding='same', activation='relu'))
+        model.add(Convolution2D(256, (5, 5), padding='same', activation='relu'))
         model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
         model.add(Dropout(0.25))
 
@@ -213,8 +208,7 @@ def main():
 
     def define_pretrained_model():
         # InceptionV3
-        base_model = InceptionV3(
-            weights='imagenet', include_top=False, input_shape=(SIZE_ROWS, SIZE_COLS, 3))
+        base_model = InceptionV3(weights='imagenet', include_top=False, input_shape=(SIZE_ROWS, SIZE_COLS, SIZE_CHAN))
         # base_model = Model(inputs=base_model.input, outputs=base_model.get_layer('conv5_block3_3_bn').output)
 
         for layer in base_model.layers:
@@ -225,8 +219,7 @@ def main():
         x = Dense(2048, activation='relu')(x)
         x = Dropout(0.5)(x)
 
-        predictions = Dense(
-            len(labels), activation='softmax', name='predictions')(x)
+        predictions = Dense(len(labels), activation='softmax', name='predictions')(x)
 
         model = Model(inputs=base_model.input, outputs=predictions)
 
@@ -246,18 +239,15 @@ def main():
 
     X_train, Y_train, labels, class_weight = load_data(path_train_data, subset)
 
-    X_train, X_val, Y_train, Y_val = train_test_split(
-        X_train, Y_train, test_size=0.20, random_state=None, stratify=Y_train)
+    X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.20, random_state=None, stratify=Y_train)
 
-    train_generator, val_generator = augment_data(
-        X_train, Y_train, X_val, Y_val)
+    train_generator, val_generator = augment_data(X_train, Y_train, X_val, Y_val)
 
     if load_checkpoint and os.path.exists(os.path.join(path_checkpoint, 'checkpoint.h5')):
         print("Loading from existing checkpoint...")
         model = load_model(os.path.join(path_checkpoint, 'checkpoint.h5'))
 
-        last_save = np.load(os.path.join(
-            path_checkpoint, 'last_save.npy'), allow_pickle=True)
+        last_save = np.load(os.path.join(path_checkpoint, 'last_save.npy'), allow_pickle=True)
         last_save = last_save.item()
 
         initial_epoch = last_save['epoch']
@@ -270,11 +260,20 @@ def main():
     else:
         if not os.path.exists(path_checkpoint):
             os.mkdir(path_checkpoint)
-        model = define_pretrained_model()
+        model = define_custom_model()
         initial_epoch = 0
         min_loss = float('inf')
 
         model.summary()
+
+        predictions = model.predict(val_generator)
+        predicted_classes = np.argmax(predictions, axis=1)
+        actuals = val_generator.y
+        actual_classes = np.argmax(actuals, axis=1)
+        confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
+        print('Initial untrained validation predictions:')
+        print(labels)
+        print(confusion.numpy()) # predictions on top, actual on right
 
         csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
                                  separator=',',
@@ -344,8 +343,9 @@ def main():
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
-    np.save(os.path.join(path_checkpoint, 'val_metrics.npy'), {
-            'labels': labels, 'confusion_matrix': confusion.numpy()})
+    np.save(os.path.join(path_checkpoint, 'val_metrics.npy'), 
+            {'labels': labels, 'confusion_matrix': confusion.numpy()})
+    print('Final trained validation predictions:')
     print(labels)
     print(confusion.numpy())
 
