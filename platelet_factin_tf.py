@@ -20,23 +20,26 @@ from sklearn.model_selection import train_test_split
 def main():
     global min_loss
 
-    path_train_data = "C:/Users/kevin/git-workspace/tf-platelets/FactinMorphology_analysis_20211216_20220120_20220204_184250/Training_Data/"
-    path_checkpoint = "C:/Users/kevin/git-workspace/tf-platelets/output/"
-    # path_train_data = "/mmfs1/home/beussk/platelet_factin_tf/train_data_20211216_20220120_20220204_184250/"
-    # path_checkpoint = "/mmfs1/home/beussk/platelet_factin_tf/output/"
+    path_train_data = "C:/Users/kevin/git-workspace/tf-platelets/Training_Data/"
+    path_output = "C:/Users/kevin/git-workspace/tf-platelets/output/"
+    # path_train_data = "/mmfs1/home/beussk/platelet_factin_tf/Training_Data/"
+    # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output/"
 
-    SIZE_ROWS = 96 # 299 for inceptionv3
-    SIZE_COLS = 96
-    SIZE_CHAN = 1 # use 1 for custom model, 3 for pretrained model
+    SIZE_ROWS = 299 # 299 for inceptionv3
+    SIZE_COLS = 299 # 96 for custom model
+    SIZE_CHAN = 3 # use 1 for custom model, 3 for pretrained model
 
-    epochs = 50  # total epochs to run up to
+    epochs = 500  # total epochs to run up to
     batch_size = 32  # number of images per batch
-    subset = 50 # float('inf')
+    subset = float('inf') # float('inf')
 
     initial_learning_rate = 0.001
     final_learning_rate = 0.00000001
 
     load_checkpoint = True
+
+    custom_model = False
+    fine_tune = True
 
     #####################
     batch_size = min(subset, batch_size)
@@ -243,24 +246,27 @@ def main():
 
     train_generator, val_generator = augment_data(X_train, Y_train, X_val, Y_val)
 
-    if load_checkpoint and os.path.exists(os.path.join(path_checkpoint, 'checkpoint.h5')):
+    if load_checkpoint and os.path.exists(os.path.join(path_output, 'checkpoint.h5')):
         print("Loading from existing checkpoint...")
-        model = load_model(os.path.join(path_checkpoint, 'checkpoint.h5'))
+        model = load_model(os.path.join(path_output, 'checkpoint.h5'))
 
-        last_save = np.load(os.path.join(path_checkpoint, 'last_save.npy'), allow_pickle=True)
+        last_save = np.load(os.path.join(path_output, 'last_save.npy'), allow_pickle=True)
         last_save = last_save.item()
 
         initial_epoch = last_save['epoch']
         # initial_learning_rate = last_save['lr']
         min_loss = last_save['val_loss']
 
-        csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
+        csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
                                  separator=',',
                                  append=True)
     else:
-        if not os.path.exists(path_checkpoint):
-            os.mkdir(path_checkpoint)
-        model = define_custom_model()
+        if not os.path.exists(path_output):
+            os.mkdir(path_output)
+        if custom_model:
+            model = define_custom_model()
+        else:
+            model = define_pretrained_model()
         initial_epoch = 0
         min_loss = float('inf')
 
@@ -275,21 +281,21 @@ def main():
         print(labels)
         print(confusion.numpy()) # predictions on top, actual on right
 
-        csv_callback = CSVLogger(os.path.join(path_checkpoint, 'history.csv'),
+        csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
                                  separator=',',
                                  append=False)
         # plot_model(model, to_file='test.png', show_shapes=True, show_layer_names=False)
 
-    # if not os.path.exists(path_checkpoint):
-    #     os.mkdir(path_checkpoint)
+    # if not os.path.exists(path_output):
+    #     os.mkdir(path_output)
     # model = define_model()
     # initial_epoch = 0
 
     # model.summary()
 
     # cp_callback = ModelCheckpoint(
-    #     # filepath = os.path.join(path_checkpoint, 'checkpoint_weights_{epoch:02d}-{val_loss:.2f}.h5'),
-    #     filepath = os.path.join(path_checkpoint, 'checkpoint.h5'),
+    #     # filepath = os.path.join(path_output, 'checkpoint_weights_{epoch:02d}-{val_loss:.2f}.h5'),
+    #     filepath = os.path.join(path_output, 'checkpoint.h5'),
     #     save_best_only = True,
     #     monitor = 'val_loss',
     #     mode = 'min',
@@ -309,7 +315,10 @@ def main():
 
     class CustomCallback(Callback):
         def on_epoch_begin(self, epoch, logs=None):
-            new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
+            if epoch <= epochs:
+                new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
+            else:
+                new_lr = final_learning_rate # this is used for fine-tuning
             tf.keras.backend.set_value(model.optimizer.lr, new_lr)
 
         def on_epoch_end(self, epoch, logs=None):
@@ -320,10 +329,10 @@ def main():
 
             if logs['val_loss'] < min_loss:
                 print(f"loss = {logs['val_loss']}, saving model")
-                model.save(os.path.join(path_checkpoint, 'checkpoint.h5'))
+                model.save(os.path.join(path_output, 'checkpoint.h5'))
                 outputs = {'epoch': epoch + 1, 'lr': current_lr,
                            'val_loss': logs['val_loss']}
-                np.save(os.path.join(path_checkpoint, 'last_save.npy'), outputs)
+                np.save(os.path.join(path_output, 'last_save.npy'), outputs)
                 min_loss = logs['val_loss']
 
     history = model.fit(
@@ -338,12 +347,32 @@ def main():
         verbose=1
     )
 
+    if not custom_model and fine_tune:
+        for layer in model.layers[279:]:
+            # if layer.__module__ is not 'keras.layers.normalization.batch_normalization':
+            # might need to skip the batch normalization layers
+            layer.trainable = True
+            
+        model.compile(optimizer=SGD(), loss='categorical_crossentropy', metrics=['accuracy'])
+        
+        history_fine = model.fit(
+            train_generator,
+            steps_per_epoch=max(1, train_generator.n // batch_size),
+            epochs=2*epochs,
+            initial_epoch=initial_epoch,
+            validation_data=val_generator,
+            validation_steps=max(1, val_generator.n // batch_size),
+            callbacks=[csv_callback, CustomCallback()],
+            class_weight=class_weight,
+            verbose=1
+        )
+
     predictions = model.predict(val_generator)
     predicted_classes = np.argmax(predictions, axis=1)
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
-    np.save(os.path.join(path_checkpoint, 'val_metrics.npy'), 
+    np.save(os.path.join(path_output, 'val_metrics.npy'), 
             {'labels': labels, 'confusion_matrix': confusion.numpy()})
     print('Final trained validation predictions:')
     print(labels)
