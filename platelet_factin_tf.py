@@ -14,17 +14,17 @@ from tensorflow.keras.optimizers import SGD
 # from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.applications import InceptionV3
 from tensorflow import math as tfmath
-from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import train_test_split
 
-np.random.seed(813)
-tf.set_random_seed(728)
+np.random.seed(1313)
+tf.keras.utils.set_random_seed(1313)
 
 def main():
     global min_loss
 
-    path_train_data = "C:/Users/kevin/git-workspace/tf-platelets/Training_Data/"
+    path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
     path_output = "C:/Users/kevin/git-workspace/tf-platelets/output/"
-    # path_train_data = "/mmfs1/home/beussk/platelet_factin_tf/Training_Data/"
+    # path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
     # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output/"
 
     SIZE_ROWS = 299 # 299 for inceptionv3
@@ -44,49 +44,46 @@ def main():
     fine_tune = True
 
     #####################
-    batch_size = min(subset, batch_size)
+    batch_size = batch_size
     decay_rate = tfmath.log(final_learning_rate /
                             initial_learning_rate)/(epochs-1)
 
-    def load_data(import_dir, subset=float('inf')):
-        data_labels = os.listdir(import_dir)
+    def load_data(import_dir):
+        train_dir = os.path.join(import_dir,'Training')
+        val_dir = os.path.join(import_dir,'Validation')
+        data_labels = os.listdir(train_dir)
 
-        num_samples = []
-        for j, label in enumerate(data_labels):
-            num_samples.append(min(subset, len([1 for x in list(os.scandir(os.path.join(
-                import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"])))
-        tot_samples = sum(num_samples)
+        num_train_samples = []
+        num_val_samples = []
+        for label in data_labels:
+            num_train_samples.append(len([1 for x in list(os.scandir(os.path.join(train_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]))
+            num_val_samples.append(len([1 for x in list(os.scandir(os.path.join(val_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]))
+        tot_train_samples = sum(num_train_samples)
+        tot_val_samples = sum(num_val_samples)
 
-        X_data = np.ndarray(
-            (tot_samples, SIZE_ROWS, SIZE_COLS, SIZE_CHAN), dtype=np.uint8)
-        Y_data = np.ndarray((tot_samples,), dtype=np.uint8)
+        X_train_data = np.ndarray((tot_train_samples, SIZE_ROWS, SIZE_COLS, SIZE_CHAN), dtype=np.uint8)
+        Y_train_data = np.ndarray((tot_train_samples,), dtype=np.uint8)
+        X_val_data = np.ndarray((tot_val_samples, SIZE_ROWS, SIZE_COLS, SIZE_CHAN), dtype=np.uint8)
+        Y_val_data = np.ndarray((tot_val_samples,), dtype=np.uint8)
 
         for j, label in enumerate(data_labels):
             pct = 0
-            image_names = [x for x in list(os.scandir(os.path.join(
-                import_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]
-            print(f'Loading {label}.', end='')
-            for i, image_name in enumerate(image_names):
-                pct += 1/num_samples[j]
-                if pct > 0.1:
-                    pct -= 0.1
-                    print('.', end='')
-                if i >= subset:
-                    break
+            train_image_names = [x for x in list(os.scandir(os.path.join(train_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]
+            val_image_names = [x for x in list(os.scandir(os.path.join(val_dir, label))) if x.is_file() and os.path.splitext(x)[1] == ".png"]
+            
+            print(f'Loading {label}...', end='')
+            for i, image_name in enumerate(train_image_names):
+                
                 # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
-                img = cv2.imread(os.path.join(
-                    import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
+                img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
 
                 # image corrections (contrast 5-95 percentile)
                 hist = cv2.calcHist([img], [0], None, [256], [0, 256])
                 cumhist = np.cumsum(hist)
-
                 tol = 5  # % of pixels to saturate (i.e. keep 5-95%)
                 total = img.size
                 low_bound = total * tol / 100  # low number of pixels to remove
-                # upp number of pixels to remove
-                upp_bound = total * (100-tol) / 100
-
+                upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
                 lowb = None
                 uppb = None
                 for k, h in enumerate(cumhist):
@@ -94,7 +91,6 @@ def main():
                         lowb = k
                     if h > upp_bound and not uppb:
                         uppb = k-1
-
                 img = np.clip(img, lowb, uppb)
                 cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
 
@@ -104,18 +100,50 @@ def main():
                 elif SIZE_CHAN == 1:
                     img = img.reshape(SIZE_ROWS, SIZE_COLS, 1)
 
-                idx = i + sum(num_samples[:j])
-                # X_data[idx] = np.array([img])
-                X_data[idx] = np.array(img)
-                Y_data[idx] = j
-            print(f'Done ({num_samples[j]} images)')
-        Y_data = to_categorical(Y_data, len(num_samples))
+                idx = i + sum(num_train_samples[:j])
+                X_train_data[idx] = np.array(img)
+                Y_train_data[idx] = j
+            
+            for i, image_name in enumerate(val_image_names):
+                
+                # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
+                img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
+
+                # image corrections (contrast 5-95 percentile)
+                hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+                cumhist = np.cumsum(hist)
+                tol = 5  # % of pixels to saturate (i.e. keep 5-95%)
+                total = img.size
+                low_bound = total * tol / 100  # low number of pixels to remove
+                upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
+                lowb = None
+                uppb = None
+                for k, h in enumerate(cumhist):
+                    if h > low_bound and not lowb:
+                        lowb = k
+                    if h > upp_bound and not uppb:
+                        uppb = k-1
+                img = np.clip(img, lowb, uppb)
+                cv2.normalize(img, img, 0, 255, cv2.NORM_MINMAX)
+
+                img = cv2.resize(img, (SIZE_ROWS, SIZE_COLS))
+                if SIZE_CHAN == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                elif SIZE_CHAN == 1:
+                    img = img.reshape(SIZE_ROWS, SIZE_COLS, 1)
+
+                idx = i + sum(num_val_samples[:j])
+                X_val_data[idx] = np.array(img)
+                Y_val_data[idx] = j
+            print(f'Done ({num_train_samples[j]} training images, {num_val_samples[j]} validation images)')
+        Y_train_data = to_categorical(Y_train_data, len(num_train_samples))
+        Y_val_data = to_categorical(Y_val_data, len(num_val_samples))
 
         data_weights = {}
         for j, label in enumerate(data_labels):
-            data_weights[j] = (1 / num_samples[j])*(tot_samples / 2.0)
+            data_weights[j] = (1 / num_train_samples[j])*(tot_train_samples / 2.0)
 
-        return X_data, Y_data, data_labels, data_weights
+        return X_train_data, Y_train_data, X_val_data, Y_val_data, data_labels, data_weights
 
     def augment_data(X_train, Y_train, X_val, Y_val):
         # def right_angle_rotate(input_image):
@@ -193,7 +221,7 @@ def main():
         model.add(Dense(256, activation='relu'))
         # model.add(Activation('relu'))
         model.add(Dropout(0.5))
-        model.add(Dense(len(labels), activation='softmax'))
+        model.add(Dense(len(class_labels), activation='softmax'))
         # model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         # lr_schedule = ExponentialDecay(learning_rate, decay_steps, decay_rate)
 
@@ -224,7 +252,7 @@ def main():
         x = Dense(2048, activation='relu')(x)
         x = Dropout(0.5)(x)
 
-        predictions = Dense(len(labels), activation='softmax', name='predictions')(x)
+        predictions = Dense(len(class_labels), activation='softmax', name='predictions')(x)
 
         model = Model(inputs=base_model.input, outputs=predictions)
 
@@ -242,9 +270,7 @@ def main():
 
         return model
 
-    X_train, Y_train, labels, class_weight = load_data(path_train_data, subset)
-
-    X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.20, random_state=None, stratify=Y_train)
+    X_train, Y_train, X_val, Y_val, class_labels, class_weights = load_data(path_data)
 
     train_generator, val_generator = augment_data(X_train, Y_train, X_val, Y_val)
 
@@ -280,7 +306,7 @@ def main():
         actual_classes = np.argmax(actuals, axis=1)
         confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
         print('Initial untrained validation predictions:')
-        print(labels)
+        print(class_labels)
         print(confusion.numpy()) # predictions on top, actual on right
 
         csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
@@ -345,7 +371,7 @@ def main():
         validation_data=val_generator,
         validation_steps=max(1, val_generator.n // batch_size),
         callbacks=[csv_callback, CustomCallback()],
-        class_weight=class_weight,
+        class_weight=class_weights,
         verbose=1
     )
 
@@ -368,7 +394,7 @@ def main():
             validation_data=val_generator,
             validation_steps=max(1, val_generator.n // batch_size),
             callbacks=[csv_callback, CustomCallback()],
-            class_weight=class_weight,
+            class_weight=class_weights,
             verbose=1
         )
 
@@ -378,9 +404,9 @@ def main():
     actual_classes = np.argmax(actuals, axis=1)
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
     np.save(os.path.join(path_output, 'val_metrics.npy'), 
-            {'labels': labels, 'confusion_matrix': confusion.numpy()})
+            {'labels': class_labels, 'confusion_matrix': confusion.numpy()})
     print('Final trained validation predictions:')
-    print(labels)
+    print(class_labels)
     print(confusion.numpy())
 
 if __name__ == "__main__":
