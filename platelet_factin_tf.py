@@ -2,20 +2,22 @@ import os
 import cv2
 import tensorflow as tf
 import numpy as np
+# import pandas as pd
 from tensorflow.keras.utils import to_categorical  # , plot_model
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Dense, BatchNormalization, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.models import Sequential, Model, load_model
-from tensorflow.keras.callbacks import ModelCheckpoint, CSVLogger, Callback, ReduceLROnPlateau, LearningRateScheduler
+from tensorflow.keras.callbacks import CSVLogger, Callback
+# from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, LearningRateScheduler
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, apply_affine_transform
 from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.optimizers.schedules import ExponentialDecay
+# from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.keras.applications import InceptionV3
 from tensorflow import math as tfmath
 from sklearn.model_selection import train_test_split
-# from pandas import read_csv
-# import csv
 
+np.random.seed(813)
+tf.set_random_seed(728)
 
 def main():
     global min_loss
@@ -315,7 +317,7 @@ def main():
 
     class CustomCallback(Callback):
         def on_epoch_begin(self, epoch, logs=None):
-            if epoch <= epochs:
+            if epoch < epochs:
                 new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
             else:
                 new_lr = final_learning_rate # this is used for fine-tuning
@@ -349,12 +351,15 @@ def main():
 
     if not custom_model and fine_tune:
         for layer in model.layers[279:]:
+            if not isinstance(layer, tf.keras.layers.BatchNormalization):
             # if layer.__module__ is not 'keras.layers.normalization.batch_normalization':
             # might need to skip the batch normalization layers
-            layer.trainable = True
+                layer.trainable = True
             
         model.compile(optimizer=SGD(), loss='categorical_crossentropy', metrics=['accuracy'])
         
+        csv_callback.append = True
+
         history_fine = model.fit(
             train_generator,
             steps_per_epoch=max(1, train_generator.n // batch_size),
