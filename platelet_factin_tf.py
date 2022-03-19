@@ -17,23 +17,18 @@ from tensorflow import math as tfmath
 # from sklearn.model_selection import train_test_split
 
 np.random.seed(1313)
-tf.keras.utils.set_random_seed(1313)
+tf.random.set_seed(1313)
 
 def main():
-    global min_loss
+    global min_val_loss
 
     path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
     path_output = "C:/Users/kevin/git-workspace/tf-platelets/output/"
     # path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
     # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output/"
 
-    SIZE_ROWS = 299 # 299 for inceptionv3
-    SIZE_COLS = 299 # 96 for custom model
-    SIZE_CHAN = 3 # use 1 for custom model, 3 for pretrained model
-
     epochs = 500  # total epochs to run up to
     batch_size = 32  # number of images per batch
-    subset = float('inf') # float('inf')
 
     initial_learning_rate = 0.001
     final_learning_rate = 0.00000001
@@ -42,9 +37,18 @@ def main():
 
     custom_model = False
     fine_tune = True
+    fine_tune_start = 289
+
+    if custom_model:
+        SIZE_ROWS = 96 # 299 for inceptionv3
+        SIZE_COLS = 96 # 96 for custom model
+        SIZE_CHAN = 1 # use 1 for custom model, 3 for pretrained model
+    else:
+        SIZE_ROWS = 299 # 299 for inceptionv3
+        SIZE_COLS = 299 # 96 for custom model
+        SIZE_CHAN = 3 # use 1 for custom model, 3 for pretrained model
 
     #####################
-    batch_size = batch_size
     decay_rate = tfmath.log(final_learning_rate /
                             initial_learning_rate)/(epochs-1)
 
@@ -278,70 +282,38 @@ def main():
         print("Loading from existing checkpoint...")
         model = load_model(os.path.join(path_output, 'checkpoint.h5'))
 
-        last_save = np.load(os.path.join(path_output, 'last_save.npy'), allow_pickle=True)
-        last_save = last_save.item()
+        with open(os.path.join(path_output, 'history.csv'), "r") as f:
+            for last_line in f:
+                pass
+            last_line = last_line[:-2].split(',')
+        
+        initial_epoch = int(last_line[0]) + 1
+        min_val_loss = float(last_line[5])
 
-        initial_epoch = last_save['epoch']
-        # initial_learning_rate = last_save['lr']
-        min_loss = last_save['val_loss']
-
-        csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
-                                 separator=',',
-                                 append=True)
+        append = True
     else:
         if not os.path.exists(path_output):
             os.mkdir(path_output)
+        
         if custom_model:
             model = define_custom_model()
         else:
             model = define_pretrained_model()
+
         initial_epoch = 0
-        min_loss = float('inf')
+        min_val_loss = float('inf')
 
         model.summary()
 
-        predictions = model.predict(val_generator)
-        predicted_classes = np.argmax(predictions, axis=1)
-        actuals = val_generator.y
-        actual_classes = np.argmax(actuals, axis=1)
-        confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
-        print('Initial untrained validation predictions:')
-        print(class_labels)
-        print(confusion.numpy()) # predictions on top, actual on right
-
-        csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
-                                 separator=',',
-                                 append=False)
+        append = False
+        
         # plot_model(model, to_file='test.png', show_shapes=True, show_layer_names=False)
 
-    # if not os.path.exists(path_output):
-    #     os.mkdir(path_output)
-    # model = define_model()
-    # initial_epoch = 0
-
-    # model.summary()
-
-    # cp_callback = ModelCheckpoint(
-    #     # filepath = os.path.join(path_output, 'checkpoint_weights_{epoch:02d}-{val_loss:.2f}.h5'),
-    #     filepath = os.path.join(path_output, 'checkpoint.h5'),
-    #     save_best_only = True,
-    #     monitor = 'val_loss',
-    #     mode = 'min',
-    #     verbose = 1)
-
-    # reduce_lr = ReduceLROnPlateau(
-    #     monitor = 'val_loss',
-    #     factor = 0.5,
-    #     patience = 3,
-    #     min_lr = final_learning_rate,
-    #     verbose = 2)
-
-    # def lr_exp_decay(epoch, lr):
-    #     return initial_learning_rate * tfmath.exp(decay_rate*epoch)
-
-    # reduce_lr = LearningRateScheduler(lr_exp_decay, verbose=1)
-
     class CustomCallback(Callback):
+        def on_train_begin(self, epoch, logs=None):
+            global min_val_loss
+            logs['min_val_loss'] = min_val_loss
+
         def on_epoch_begin(self, epoch, logs=None):
             if epoch < epochs:
                 new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
@@ -350,33 +322,36 @@ def main():
             tf.keras.backend.set_value(model.optimizer.lr, new_lr)
 
         def on_epoch_end(self, epoch, logs=None):
-            global min_loss
-
             current_lr = model.optimizer.lr.numpy()
+            logs['learning_rate'] = current_lr
             print(f"epoch = {epoch + 1}, learning rate = {current_lr}")
 
-            if logs['val_loss'] < min_loss:
-                print(f"loss = {logs['val_loss']}, saving model")
+            if logs['val_loss'] < logs['min_val_loss']:
                 model.save(os.path.join(path_output, 'checkpoint.h5'))
-                outputs = {'epoch': epoch + 1, 'lr': current_lr,
-                           'val_loss': logs['val_loss']}
-                np.save(os.path.join(path_output, 'last_save.npy'), outputs)
-                min_loss = logs['val_loss']
+                logs['min_val_loss'] = logs['val_loss']
+                logs['saved'] = '*'
+            else:
+                logs['saved'] = ''
 
-    history = model.fit(
-        train_generator,
-        steps_per_epoch=max(1, train_generator.n // batch_size),
-        epochs=epochs,
-        initial_epoch=initial_epoch,
-        validation_data=val_generator,
-        validation_steps=max(1, val_generator.n // batch_size),
-        callbacks=[csv_callback, CustomCallback()],
-        class_weight=class_weights,
-        verbose=1
-    )
+    csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
+                                 separator=',',
+                                 append=append)
+
+    if initial_epoch < epochs:
+        history = model.fit(
+            train_generator,
+            steps_per_epoch=max(1, train_generator.n // batch_size),
+            epochs=epochs,
+            initial_epoch=initial_epoch,
+            validation_data=val_generator,
+            validation_steps=max(1, val_generator.n // batch_size),
+            callbacks=[CustomCallback(), csv_callback],
+            class_weight=class_weights,
+            verbose=2
+        )
 
     if not custom_model and fine_tune:
-        for layer in model.layers[279:]:
+        for layer in model.layers[fine_tune_start:]:
             if not isinstance(layer, tf.keras.layers.BatchNormalization):
             # if layer.__module__ is not 'keras.layers.normalization.batch_normalization':
             # might need to skip the batch normalization layers
@@ -395,7 +370,7 @@ def main():
             validation_steps=max(1, val_generator.n // batch_size),
             callbacks=[csv_callback, CustomCallback()],
             class_weight=class_weights,
-            verbose=1
+            verbose=2
         )
 
     predictions = model.predict(val_generator)
@@ -407,7 +382,7 @@ def main():
             {'labels': class_labels, 'confusion_matrix': confusion.numpy()})
     print('Final trained validation predictions:')
     print(class_labels)
-    print(confusion.numpy())
+    print(confusion.numpy()) # predictions on top, actual on right
 
 if __name__ == "__main__":
     main()
