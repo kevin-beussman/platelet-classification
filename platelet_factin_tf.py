@@ -274,7 +274,7 @@ def main():
 
         return model
 
-    X_train, Y_train, X_val, Y_val, class_labels, class_weights = load_data(path_data)
+    X_train, Y_train, X_val, Y_val, class_labels, class_weight = load_data(path_data)
 
     train_generator, val_generator = augment_data(X_train, Y_train, X_val, Y_val)
 
@@ -288,7 +288,7 @@ def main():
             last_line = last_line[:-2].split(',')
         
         initial_epoch = int(last_line[0]) + 1
-        min_val_loss = float(last_line[5])
+        min_val_loss = float(last_line[4])
 
         append = True
     else:
@@ -310,10 +310,6 @@ def main():
         # plot_model(model, to_file='test.png', show_shapes=True, show_layer_names=False)
 
     class CustomCallback(Callback):
-        def on_train_begin(self, epoch, logs=None):
-            global min_val_loss
-            logs['min_val_loss'] = min_val_loss
-
         def on_epoch_begin(self, epoch, logs=None):
             if epoch < epochs:
                 new_lr = initial_learning_rate * tfmath.exp(decay_rate*epoch)
@@ -322,20 +318,22 @@ def main():
             tf.keras.backend.set_value(model.optimizer.lr, new_lr)
 
         def on_epoch_end(self, epoch, logs=None):
-            current_lr = model.optimizer.lr.numpy()
-            logs['learning_rate'] = current_lr
-            print(f"epoch = {epoch + 1}, learning rate = {current_lr}")
+            global min_val_loss
 
-            if logs['val_loss'] < logs['min_val_loss']:
+            if logs['val_loss'] < min_val_loss:
                 model.save(os.path.join(path_output, 'checkpoint.h5'))
                 logs['min_val_loss'] = logs['val_loss']
                 logs['saved'] = '*'
             else:
+                logs['min_val_loss']
                 logs['saved'] = ''
+            
+            current_lr = model.optimizer.lr.numpy()
+            logs['learning_rate'] = current_lr
 
     csv_callback = CSVLogger(os.path.join(path_output, 'history.csv'),
-                                 separator=',',
-                                 append=append)
+        separator=',',
+        append=append)
 
     if initial_epoch < epochs:
         history = model.fit(
@@ -346,7 +344,7 @@ def main():
             validation_data=val_generator,
             validation_steps=max(1, val_generator.n // batch_size),
             callbacks=[CustomCallback(), csv_callback],
-            class_weight=class_weights,
+            class_weight=class_weight,
             verbose=2
         )
 
@@ -368,8 +366,8 @@ def main():
             initial_epoch=initial_epoch,
             validation_data=val_generator,
             validation_steps=max(1, val_generator.n // batch_size),
-            callbacks=[csv_callback, CustomCallback()],
-            class_weight=class_weights,
+            callbacks=[CustomCallback(), csv_callback],
+            class_weight=class_weight,
             verbose=2
         )
 
@@ -378,9 +376,8 @@ def main():
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
-    np.save(os.path.join(path_output, 'val_metrics.npy'), 
-            {'labels': class_labels, 'confusion_matrix': confusion.numpy()})
     print('Final trained validation predictions:')
+    print('(predictions on top, actual on right)')
     print(class_labels)
     print(confusion.numpy()) # predictions on top, actual on right
 
