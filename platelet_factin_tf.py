@@ -30,14 +30,14 @@ def main():
     epochs = 500  # total epochs to run up to
     batch_size = 32  # number of images per batch
 
-    initial_learning_rate = 0.001
-    final_learning_rate = 0.00000001
+    initial_learning_rate = 0.01
+    final_learning_rate = 0.0001
 
     load_checkpoint = True
 
     custom_model = False
     fine_tune = True
-    fine_tune_start = 289
+    fine_tune_start = 0
 
     if custom_model:
         SIZE_ROWS = 96 # 299 for inceptionv3
@@ -322,10 +322,11 @@ def main():
 
             if logs['val_loss'] < min_val_loss:
                 model.save(os.path.join(path_output, 'checkpoint.h5'))
+                min_val_loss = logs['val_loss']
                 logs['min_val_loss'] = logs['val_loss']
                 logs['saved'] = '*'
             else:
-                logs['min_val_loss']
+                logs['min_val_loss'] = min_val_loss
                 logs['saved'] = ''
             
             current_lr = model.optimizer.lr.numpy()
@@ -347,6 +348,7 @@ def main():
             class_weight=class_weight,
             verbose=2
         )
+        initial_epoch = epochs
 
     if not custom_model and fine_tune:
         for layer in model.layers[fine_tune_start:]:
