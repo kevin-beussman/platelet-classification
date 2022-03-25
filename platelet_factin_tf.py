@@ -56,6 +56,7 @@ def main():
         train_dir = os.path.join(import_dir,'Training')
         val_dir = os.path.join(import_dir,'Validation')
         data_labels = os.listdir(train_dir)
+        data_labels.sort()
 
         num_train_samples = []
         num_val_samples = []
