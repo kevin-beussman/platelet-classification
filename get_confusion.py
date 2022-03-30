@@ -18,7 +18,6 @@ from tensorflow import math as tfmath
 import csv
 
 np.random.seed(1313)
-# tf.keras.utils.set_random_seed(1313)
 tf.random.set_seed(1313)
 
 def main():
@@ -26,7 +25,7 @@ def main():
 
     path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
     # path_output = "C:/Users/kevin/git-workspace/tf-platelets/outputtest/"
-    path_output = "C:/Users/kevin/OneDrive/Desktop/test/"
+    path_output = "C:/Users/kevin/OneDrive/Desktop/test3/"
     # path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
     # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output3/"
 
@@ -36,10 +35,12 @@ def main():
     SIZE_COLS = 299 # 96 for custom model
     SIZE_CHAN = 3 # use 1 for custom model, 3 for pretrained model
 
+    tol = 1 # % of pixels to saturate (i.e. 5 means keep pixels within 5-95%)
+
     def load_data(import_dir):
         val_dir = os.path.join(import_dir,'Validation')
-        # data_labels = os.listdir(val_dir)
-        data_labels = ['Nodules', 'Solid', 'Hollow']
+        data_labels = os.listdir(val_dir)
+        data_labels.sort()
 
         num_val_samples = []
         for label in data_labels:
@@ -62,7 +63,6 @@ def main():
                 # image corrections (contrast 5-95 percentile)
                 hist = cv2.calcHist([img], [0], None, [256], [0, 256])
                 cumhist = np.cumsum(hist)
-                tol = 1  # % of pixels to saturate (i.e. keep 5-95%)
                 total = img.size
                 low_bound = total * tol / 100  # low number of pixels to remove
                 upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
@@ -101,7 +101,7 @@ def main():
 
     model = load_model(os.path.join(path_output, 'platelet_classifier.h5'))
 
-    predictions = model.predict(val_generator)
+    predictions = model.predict(val_generator, verbose=1)
     predicted_classes = np.argmax(predictions, axis=1)
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
@@ -110,12 +110,14 @@ def main():
         os.mkdir(os.path.join(path_output, 'misclassified_images'))
     with open(os.path.join(path_output, 'misclassified.csv'), 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['filename', 'prediction nodule', 'solid', 'hollow', 'actual nodule', 'solid', 'hollow'])
+        writer.writerow(['filename', 'prediction ' + class_labels[0], class_labels[1], class_labels[2], 'actual ' + class_labels[0], class_labels[1], class_labels[2]])
+        misclassified_n = 0
         for i in range(len(predictions)):
             if predicted_classes[i] != actual_classes[i]:
+                misclassified_n += 1
                 # print([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
                 # cv2.imshow(X_val[i])
-                cv2.imwrite(os.path.join(path_output, 'misclassified_images', 'p' + class_labels[predicted_classes[i]] + '_a' + class_labels[actual_classes[i]] + '_' + filenames[i].name), X_val[i,:,:,0])
+                cv2.imwrite(os.path.join(path_output, 'misclassified_images', 'p' + class_labels[predicted_classes[i]] + f'{predictions[i][predicted_classes[i]]:.2f}' + '_a' + class_labels[actual_classes[i]] + '_' + filenames[i].name), X_val[i,:,:,0])
                 writer.writerow([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
 
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
@@ -125,7 +127,7 @@ def main():
     print(class_labels)
     print(confusion.numpy())
 
-    print('hi')
+    print(f'accuracy = {(len(predictions) - misclassified_n) / len(predictions)}')
 
 if __name__ == "__main__":
     main()
