@@ -106,19 +106,30 @@ def main():
     actuals = val_generator.y
     actual_classes = np.argmax(actuals, axis=1)
 
+    if not os.path.exists(os.path.join(path_output, 'classified_images')):
+        os.mkdir(os.path.join(path_output, 'classified_images'))
     if not os.path.exists(os.path.join(path_output, 'misclassified_images')):
         os.mkdir(os.path.join(path_output, 'misclassified_images'))
-    with open(os.path.join(path_output, 'misclassified.csv'), 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['filename', 'prediction ' + class_labels[0], class_labels[1], class_labels[2], 'actual ' + class_labels[0], class_labels[1], class_labels[2]])
+    with open(os.path.join(path_output, 'classified.csv'), 'w', newline='') as f1, open(os.path.join(path_output, 'misclassified.csv'), 'w', newline='') as f2:
+        writer1 = csv.writer(f1)
+        writer2 = csv.writer(f2)
+        writer1.writerow(['filename', 'prediction ' + class_labels[0], class_labels[1], class_labels[2], 'actual ' + class_labels[0], class_labels[1], class_labels[2]])
+        writer2.writerow(['filename', 'prediction ' + class_labels[0], class_labels[1], class_labels[2], 'actual ' + class_labels[0], class_labels[1], class_labels[2]])
+        classified_n = 0
         misclassified_n = 0
         for i in range(len(predictions)):
-            if predicted_classes[i] != actual_classes[i]:
+            if predicted_classes[i] == actual_classes[i]:
+                classified_n += 1
+                # print([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
+                # cv2.imshow(X_val[i])
+                cv2.imwrite(os.path.join(path_output, 'classified_images', 'p' + class_labels[predicted_classes[i]] + f'{predictions[i][predicted_classes[i]]:.2f}' + '_a' + class_labels[actual_classes[i]] + '_' + filenames[i].name), X_val[i,:,:,0])
+                writer1.writerow([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
+            else:
                 misclassified_n += 1
                 # print([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
                 # cv2.imshow(X_val[i])
                 cv2.imwrite(os.path.join(path_output, 'misclassified_images', 'p' + class_labels[predicted_classes[i]] + f'{predictions[i][predicted_classes[i]]:.2f}' + '_a' + class_labels[actual_classes[i]] + '_' + filenames[i].name), X_val[i,:,:,0])
-                writer.writerow([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
+                writer2.writerow([filenames[i].path] + list(predictions[i]) + list(actuals[i]))
 
     confusion = tfmath.confusion_matrix(actual_classes, predicted_classes)
     # np.save(os.path.join(path_output, 'val_metrics.npy'), 
