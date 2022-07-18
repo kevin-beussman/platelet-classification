@@ -25,7 +25,9 @@ def main():
 
     path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
     # path_output = "C:/Users/kevin/git-workspace/tf-platelets/outputtest/"
-    path_output = "C:/Users/kevin/OneDrive/Desktop/test3/"
+    # path_output = "C:/Users/kevin/OneDrive/Desktop/test2022-06-05/"
+    path_output = "C:/Users/kevin/OneDrive/Desktop/output2022-06-08_2"
+    
     # path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
     # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output3/"
 
@@ -59,6 +61,8 @@ def main():
                 
                 # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
                 img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
+
+                img = cv2.resize(img, (40, 40))
 
                 # image corrections (contrast 5-95 percentile)
                 hist = cv2.calcHist([img], [0], None, [256], [0, 256])
