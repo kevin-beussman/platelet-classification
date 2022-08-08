@@ -22,13 +22,15 @@ tf.random.set_seed(1313)
 def main():
     global min_val_loss
 
-    path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
-    path_output = "C:/Users/kevin/git-workspace/tf-platelets/output/"
-    # path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
-    # path_output = "/mmfs1/home/beussk/platelet_factin_tf/output/"
+    # path_data = "C:/Users/kevin/git-workspace/tf-platelets/Data/"
+    # path_output = "C:/Users/kevin/git-workspace/tf-platelets/outputtest/"
+    path_data = "/mmfs1/home/beussk/platelet_factin_tf/Data/"
+    path_output = "/mmfs1/home/beussk/platelet_factin_tf/output2022-08-07/"
 
-    epochs = 500  # total epochs to run up to
-    batch_size = 32  # number of images per batch
+    epochs = 200  # total epochs to run up to
+    batch_size = 96  # number of images per batch
+
+    tol = 1 # % of pixels to saturate (i.e. 5 means keep pixels within 5-95%)
 
     initial_learning_rate = 0.01
     final_learning_rate = 0.0001
@@ -82,10 +84,11 @@ def main():
                 # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
                 img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
 
+                img = cv2.resize(img, (40, 40))
+
                 # image corrections (contrast 5-95 percentile)
                 hist = cv2.calcHist([img], [0], None, [256], [0, 256])
                 cumhist = np.cumsum(hist)
-                tol = 5  # % of pixels to saturate (i.e. keep 5-95%)
                 total = img.size
                 low_bound = total * tol / 100  # low number of pixels to remove
                 upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
@@ -114,10 +117,11 @@ def main():
                 # img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_COLOR)
                 img = cv2.imread(os.path.join(import_dir, label, image_name), cv2.IMREAD_GRAYSCALE)
 
+                img = cv2.resize(img, (40, 40))
+
                 # image corrections (contrast 5-95 percentile)
                 hist = cv2.calcHist([img], [0], None, [256], [0, 256])
                 cumhist = np.cumsum(hist)
-                tol = 5  # % of pixels to saturate (i.e. keep 5-95%)
                 total = img.size
                 low_bound = total * tol / 100  # low number of pixels to remove
                 upp_bound = total * (100-tol) / 100 # upp number of pixels to remove
@@ -179,10 +183,12 @@ def main():
         #     fill_mode='nearest')
 
         train_datagen = ImageDataGenerator(
-            fill_mode='nearest',
-            rescale=1./255,  # i.e. get all pixels betwen 0-1, works for 8-bit image uint8 = 255
-            # degrees to rotate image (from -45 to +45 degrees)
-            rotation_range=45,
+            fill_mode='reflect',
+            rescale=1./255, # i.e. get all pixels between 0-1, works for 8-bit image uint8 = 255
+            rotation_range=45, # degrees to rotate image (from -45 to +45 degrees)
+            width_shift_range=0.05, # translate left/right
+            height_shift_range=0.05, # translate up/down
+            zoom_range=0.1, # zoom
             horizontal_flip=True,  # mirror left/right
             vertical_flip=True  # mirror up/down
         )
