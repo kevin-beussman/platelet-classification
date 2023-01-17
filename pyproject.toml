@@ -10,6 +10,7 @@ packages = [{include = "platelet_classification"}]
 python = "~3.10"
 tensorflow = "^2.11.0"
 opencv-python = "^4.7.0.68"
+scipy = "^1.10.0"
 
 
 [build-system]
